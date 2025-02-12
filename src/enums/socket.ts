@@ -3,5 +3,5 @@ export enum SocketIO {
   Disconnect = 'disconnect',
   ConnectionSuccess = 'connection-success',
   RTPCapabilities = 'rtp-capabilities',
+  CreateWebRtcTransport = 'createWebRtcTransport',
 }
-
