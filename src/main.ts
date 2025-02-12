@@ -2,6 +2,7 @@ import { createWorker, types } from 'mediasoup';
 
 import { RtpCodecCapability } from 'mediasoup/node/lib/rtpParametersTypes.js';
 import { Server } from 'socket.io';
+import { SocketIO } from './enums/socket.js';
 import express from 'express';
 
 const app = express();
@@ -14,16 +15,12 @@ const io = new Server(8000, {
 
 const socket = io.of('/peers');
 
-socket.on('connection', (socket) => {
+socket.on(SocketIO.Connection, (socket) => {
   console.log('a user connected');
-  socket.emit('connection-success', socket.id);
-  socket.on('disconnect', () => {
+  socket.emit(SocketIO.ConnectionSuccess, socket.id);
+  socket.on(SocketIO.Disconnect, () => {
     console.log('user disconnected');
   });
-});
-
-socket.on('media-event', (data) => {
-  console.log('Media event received:', data);
 });
 
 const mediaCodecs: RtpCodecCapability[] = [
@@ -95,7 +92,7 @@ router
     console.error(err);
   });
 
-socket.on('getRouterRtpCapabilities', (data, callback) => {
+socket.on(SocketIO.RTPCapabilities, (data, callback) => {
   callback(rtpCapabilities);
   console.log('Router RTP Capabilities:', rtpCapabilities);
   console.log('Router RTP Capabilities:', data);
