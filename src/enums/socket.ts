@@ -1,7 +1,16 @@
 export enum SocketIO {
   Connection = 'connection',
+  Connect = 'connect',
   Disconnect = 'disconnect',
   ConnectionSuccess = 'connection-success',
   RTPCapabilities = 'rtp-capabilities',
   CreateWebRtcTransport = 'createWebRtcTransport',
+  ConnectTransport = 'transport-connect',
+  Produce = 'produce',
+  Consume = 'consume',
+  TransportProduce = 'transport-produce',
+  TransportRCVConnect = 'transport-recv-connect',
+  CloseTransport = 'transportclose',
+  CloseProducer = 'producerclose',
+  ResumeConsumer = 'consumer-resume',
 }

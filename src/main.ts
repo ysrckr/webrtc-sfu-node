@@ -1,6 +1,8 @@
+import { AppData } from 'mediasoup/node/lib/types.js';
 import { RtpCodecCapability } from 'mediasoup/node/lib/rtpParametersTypes.js';
 import { Server } from 'socket.io';
 import { SocketIO } from './enums/socket.js';
+import { WebRtcTransport } from 'mediasoup/node/lib/WebRtcTransportTypes.js';
 import { createServer } from 'node:http';
 import { createWorker } from 'mediasoup';
 import express from 'express';
@@ -15,7 +17,9 @@ const io = new Server(createServer(app), {
   },
 });
 
-const socket = io.of('/peers');
+
+
+const socket = io.of(`/peers`);
 
 const mediaCodecs: RtpCodecCapability[] = [
   {
@@ -37,23 +41,11 @@ const mediaCodecs: RtpCodecCapability[] = [
 const worker = await createWorker();
 
 const router = await worker?.createRouter({ mediaCodecs });
-console.log('router', router);
-console.log('router', router);
-
-// const transport = await router?.createWebRtcTransport({
-//   listenIps: [
-//     {
-//       ip: '127.0.0.1:8002',
-//       announcedIp: '127.0.0.1:8001',
-//     },
-//   ],
-//   enableUdp: true,
-//   enableTcp: true,
-//   preferUdp: true,
-// });
 
 let producerTransport;
 let consumerTransport;
+let producer;
+let consumer;
 
 socket.on(SocketIO.Connection, (socket) => {
   console.log('a user connected');
@@ -65,21 +57,146 @@ socket.on(SocketIO.Connection, (socket) => {
   socket.on(SocketIO.RTPCapabilities, (callback) => {
     const rtpCapabilities = router?.rtpCapabilities;
 
-    console.log('rtp Capabilities', rtpCapabilities);
-
-    // call callback from the client and send back the rtpCapabilities
     callback({ rtpCapabilities });
   });
 
   socket.on(SocketIO.CreateWebRtcTransport, async ({ sender }, callback) => {
     console.log(`Is this a sender request? ${sender}`);
-    // The client indicates if it is a producer or a consumer
-    // if sender is true, indicates a producer else a consumer
-    if (sender)
-      producerTransport = await router?.createWebRtcTransport(callback);
-    else consumerTransport = await router?.createWebRtcTransport(callback);
+
+    if (sender) producerTransport = await createWebRtcTransport(callback);
+    else consumerTransport = await createWebRtcTransport(callback);
+  });
+
+  socket.on(SocketIO.ConnectTransport, async ({ dtlsParameters }) => {
+    console.log('DTLS PARAMS... ', { dtlsParameters });
+    await producerTransport.connect({ dtlsParameters });
+  });
+
+  socket.on(
+    SocketIO.TransportProduce,
+    async ({ kind, rtpParameters }, callback) => {
+      producer = await producerTransport.produce({
+        kind,
+        rtpParameters,
+      });
+
+      console.log('Producer ID: ', producer.id, producer.kind);
+
+      producer.on('transportclose', () => {
+        console.log('transport for this producer closed ');
+        producer.close();
+      });
+
+      callback({
+        id: producer.id,
+      });
+    },
+  );
+
+  socket.on(SocketIO.TransportRCVConnect, async ({ dtlsParameters }) => {
+    console.log(`DTLS PARAMS: ${dtlsParameters}`);
+    await consumerTransport.connect({ dtlsParameters });
+  });
+
+  socket.on(SocketIO.Consume, async ({ rtpCapabilities }, callback) => {
+    console.log('consume');
+    try {
+      if (
+        router.canConsume({
+          producerId: producer.id,
+          rtpCapabilities,
+        })
+      ) {
+        consumer = await consumerTransport.consume({
+          producerId: producer.id,
+          rtpCapabilities,
+          paused: true,
+        });
+
+        consumer.on(SocketIO.CloseTransport, () => {
+          console.log('transport close from consumer');
+        });
+
+        consumer.on(SocketIO.CloseProducer, () => {
+          console.log('producer of consumer closed');
+        });
+
+        const params = {
+          id: consumer.id,
+          producerId: producer.id,
+          kind: consumer.kind,
+          rtpParameters: consumer.rtpParameters,
+        };
+
+        callback({ params });
+      }
+    } catch (error) {
+      console.log(error.message);
+      callback({
+        params: {
+          error: error,
+        },
+      });
+    }
+  });
+
+  socket.on(SocketIO.ResumeConsumer, async () => {
+    console.log('consumer resume');
+    await consumer.resume();
   });
 });
+
+async function createWebRtcTransport(
+  callback,
+): Promise<WebRtcTransport<AppData> | null> {
+  try {
+    const webRtcTransport_options = {
+      listenIps: [
+        {
+          ip: '0.0.0.0', // replace with relevant IP address
+          announcedIp: '127.0.0.1',
+        },
+      ],
+      enableUdp: true,
+      enableTcp: true,
+      preferUdp: true,
+    };
+
+    const transport = await router.createWebRtcTransport(
+      webRtcTransport_options,
+    );
+    console.log(`transport id: ${transport.id}`);
+
+    transport.on('dtlsstatechange', (dtlsState) => {
+      if (dtlsState === 'closed') {
+        transport.close();
+      }
+    });
+
+    transport.on('@close', () => {
+      console.log('transport closed');
+    });
+
+    callback({
+      params: {
+        id: transport.id,
+        iceParameters: transport.iceParameters,
+        iceCandidates: transport.iceCandidates,
+        dtlsParameters: transport.dtlsParameters,
+      },
+    });
+
+    return transport;
+  } catch (error) {
+    console.log(error);
+    callback({
+      params: {
+        error: error,
+      },
+    });
+    return null;
+  }
+}
 
 app.get('/', (_, res) => {
   res.json({
