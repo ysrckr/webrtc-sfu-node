@@ -99,7 +99,6 @@ socket.on(SocketIO.Connection, (socket) => {
   });
 
   socket.on(SocketIO.Consume, async ({ rtpCapabilities }, callback) => {
-    console.log('consume');
     try {
       if (
         router.canConsume({
