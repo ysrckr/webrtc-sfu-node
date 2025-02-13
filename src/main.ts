@@ -17,8 +17,6 @@ const io = new Server(createServer(app), {
   },
 });
 
-
-
 const socket = io.of(`/peers`);
 
 const mediaCodecs: RtpCodecCapability[] = [
