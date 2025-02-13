@@ -1,4 +1,5 @@
-import { AppData } from 'mediasoup/node/lib/types.js';
+import { AppData, Consumer, Producer } from 'mediasoup/node/lib/types.js';
+
 import { RtpCodecCapability } from 'mediasoup/node/lib/rtpParametersTypes.js';
 import { Server } from 'socket.io';
 import { SocketIO } from './enums/socket.js';
@@ -40,10 +41,10 @@ const worker = await createWorker();
 
 const router = await worker?.createRouter({ mediaCodecs });
 
-let producerTransport;
-let consumerTransport;
-let producer;
-let consumer;
+let producerTransport: WebRtcTransport<AppData>;
+let consumerTransport: WebRtcTransport<AppData>;
+const producers: Producer<AppData>[] = [];
+const consumers: Consumer<AppData>[] = [];
 
 socket.on(SocketIO.Connection, (socket) => {
   console.log('a user connected');
@@ -73,10 +74,12 @@ socket.on(SocketIO.Connection, (socket) => {
   socket.on(
     SocketIO.TransportProduce,
     async ({ kind, rtpParameters }, callback) => {
-      producer = await producerTransport.produce({
+      const producer = await producerTransport.produce({
         kind,
         rtpParameters,
       });
+
+      producers.push(producer);
 
       console.log('Producer ID: ', producer.id, producer.kind);
 
@@ -87,59 +90,57 @@ socket.on(SocketIO.Connection, (socket) => {
 
       callback({
         id: producer.id,
+        rtpParameters: producer.rtpParameters,
       });
     },
   );
 
   socket.on(SocketIO.TransportRCVConnect, async ({ dtlsParameters }) => {
     console.log(`DTLS PARAMS: ${dtlsParameters}`);
+
     await consumerTransport.connect({ dtlsParameters });
   });
 
   socket.on(SocketIO.Consume, async ({ rtpCapabilities }, callback) => {
-    try {
-      if (
-        router.canConsume({
-          producerId: producer.id,
-          rtpCapabilities,
-        })
-      ) {
-        consumer = await consumerTransport.consume({
-          producerId: producer.id,
-          rtpCapabilities,
-          paused: true,
-        });
+    producers.forEach(async (producer) => {
+      try {
+        if (router?.canConsume({ producerId: producer.id, rtpCapabilities })) {
+          const consumer = await consumerTransport.consume({
+            producerId: producer.id,
+            rtpCapabilities,
+            paused: false,
+          });
 
-        consumer.on(SocketIO.CloseTransport, () => {
-          console.log('transport close from consumer');
-        });
+          consumers.push(consumer);
 
-        consumer.on(SocketIO.CloseProducer, () => {
-          console.log('producer of consumer closed');
-        });
+          consumer.on('transportclose', () => {
+            console.log('transport close from consumer');
+          });
 
-        const params = {
-          id: consumer.id,
-          producerId: producer.id,
-          kind: consumer.kind,
-          rtpParameters: consumer.rtpParameters,
-        };
+          consumer.on('producerclose', () => {
+            console.log('producer of consumer closed');
+          });
 
-        callback({ params });
+          const params = {
+            id: consumer.id,
+            producerId: producer.id,
+            kind: consumer.kind,
+            rtpParameters: consumer.rtpParameters,
+          };
+
+          callback({ params });
+        }
+      } catch (error) {
+        console.log(error);
       }
-    } catch (error) {
-      console.log(error.message);
-      callback({
-        params: {
-          error: error,
-        },
-      });
-    }
+    });
   });
 
   socket.on(SocketIO.ResumeConsumer, async () => {
     console.log('consumer resume');
-    await consumer.resume();
+    consumers.forEach(async (consumer) => {
+      await consumer.resume();
+    });
   });
 });
 
