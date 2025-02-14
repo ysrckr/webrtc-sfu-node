@@ -49,7 +49,7 @@ let producerTransport: WebRtcTransport<AppData>;
 let consumerTransport: WebRtcTransport<AppData>;
 const producers: Producer<AppData>[] = [];
 const consumers: Consumer<AppData>[] = [];
-const consumerParameters: {
+let consumerParameters: {
   id: string;
   producerId: string;
   kind: MediaKind;
@@ -112,7 +112,6 @@ socket.on(SocketIO.Connection, (socket) => {
   });
 
   socket.on(SocketIO.Consume, async ({ rtpCapabilities }, callback) => {
-    console.log('soket basi');
     for (const producer of producers) {
       try {
         if (router?.canConsume({ producerId: producer.id, rtpCapabilities })) {
@@ -145,9 +144,9 @@ socket.on(SocketIO.Connection, (socket) => {
         console.log(error);
       }
     }
-    console.log('callback oncesi');
+
     callback({ params: consumerParameters });
-    console.log('callback sonrasi');
+    consumerParameters = [];
   });
 
   socket.on(SocketIO.ResumeConsumer, async () => {
