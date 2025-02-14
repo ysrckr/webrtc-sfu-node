@@ -112,7 +112,8 @@ socket.on(SocketIO.Connection, (socket) => {
   });
 
   socket.on(SocketIO.Consume, async ({ rtpCapabilities }, callback) => {
-    producers.forEach(async (producer) => {
+    console.log('soket basi');
+    for (const producer of producers) {
       try {
         if (router?.canConsume({ producerId: producer.id, rtpCapabilities })) {
           const consumer = await consumerTransport.consume({
@@ -143,9 +144,10 @@ socket.on(SocketIO.Connection, (socket) => {
       } catch (error) {
         console.log(error);
       }
-    });
-
+    }
+    console.log('callback oncesi');
     callback({ params: consumerParameters });
+    console.log('callback sonrasi');
   });
 
   socket.on(SocketIO.ResumeConsumer, async () => {
