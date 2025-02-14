@@ -1,6 +1,10 @@
 import { AppData, Consumer, Producer } from 'mediasoup/node/lib/types.js';
+import {
+  MediaKind,
+  RtpCodecCapability,
+  RtpParameters,
+} from 'mediasoup/node/lib/rtpParametersTypes.js';
 
-import { RtpCodecCapability } from 'mediasoup/node/lib/rtpParametersTypes.js';
 import { Server } from 'socket.io';
 import { SocketIO } from './enums/socket.js';
 import { WebRtcTransport } from 'mediasoup/node/lib/WebRtcTransportTypes.js';
@@ -45,6 +49,12 @@ let producerTransport: WebRtcTransport<AppData>;
 let consumerTransport: WebRtcTransport<AppData>;
 const producers: Producer<AppData>[] = [];
 const consumers: Consumer<AppData>[] = [];
+const consumerParameters: {
+  id: string;
+  producerId: string;
+  kind: MediaKind;
+  rtpParameters: RtpParameters;
+}[] = [];
 
 socket.on(SocketIO.Connection, (socket) => {
   console.log('a user connected');
@@ -128,12 +138,14 @@ socket.on(SocketIO.Connection, (socket) => {
             rtpParameters: consumer.rtpParameters,
           };
 
-          callback({ params });
+          consumerParameters.push(params);
         }
       } catch (error) {
         console.log(error);
       }
     });
+
+    callback({ params: consumerParameters });
   });
 
   socket.on(SocketIO.ResumeConsumer, async () => {
